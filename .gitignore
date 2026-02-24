@@ -1,0 +1,17 @@
+# Virtual environment (machine-specific)
+venv/
+.venv/
+env/
+
+# Environment variables & secrets
+.env
+.env.*
+
+# Logs (application runtime logs)
+*.log
+logs/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
