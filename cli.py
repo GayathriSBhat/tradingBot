@@ -4,8 +4,12 @@ from bot.logging_config import setup_logging
 from bot.validators import OrderInput
 from bot.client import BinanceClient
 from bot.orders import place_market, place_limit
+from rich.console import Console
+from rich.table import Table
+
 
 app = typer.Typer()
+console = Console()
 
 # to extract tick rate, stock qty from market before user can place an order(to make informed decisions)
 def summarize_filters(filters):
@@ -33,7 +37,14 @@ def interactive(debug: bool = False):
     client = BinanceClient()
 
     # Show available symbols -bitcoins (trading contract)
-    print(client.get_symbols())
+    items=client.get_symbols()
+    table = Table(title="Available Symbols")
+    table.add_column("Symbol")
+
+    for item in items:
+        table.add_row(item)
+
+    console.print(table)
 
     # step 1- enter symbol 
     symbol = typer.prompt("Symbol", default="BTCUSDT")
@@ -53,6 +64,9 @@ def interactive(debug: bool = False):
 
     # Step 4 — ask inputs    
     side = typer.prompt("Side (BUY/SELL)")
+    reduceOnly = False
+    if side=='SELL':
+        reduceOnly=typer.prompt("Reduce only?False/True:")
     order_type = typer.prompt("Order type (MARKET/LIMIT)")    
     price = None
     if order_type == "LIMIT":
@@ -77,14 +91,15 @@ def interactive(debug: bool = False):
 
     print("\n=== Order Summary ===")
     print(order)  
+    print("\n=== debug info ===")
 
     #Step 6 Place order and catch errors while sending API request
     try:
         setup_logging(debug=debug)
         if order.order_type == "MARKET":
-            res = place_market(symbol, side, quantity)
+            res = place_market(symbol, side, quantity, reduceOnly)
         else:
-            res = place_limit(symbol, side, quantity, price)
+            res = place_limit(symbol, side, quantity, price, reduceOnly)
     except Exception as e:
         print("\nFAILED:", str(e))
         return

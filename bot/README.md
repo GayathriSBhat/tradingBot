@@ -179,3 +179,9 @@ These constraints should ideally be validated client-side to enhance user experi
 ---
 
 End of document.
+
+
+## Architecture
+Flow:
+
+Display available bitcoin types → chose bitcoin → show price of 1 unit and available qty availble in the market → let user chose how much price*qty they want to buy or sell → validate their inputs through pydantic  + custom validators (price*qty > min_notational) → place order → print if order was placed successfully → log the transaction in a log file
