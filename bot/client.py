@@ -44,6 +44,18 @@ class BinanceClient:
             logging.error(f"API error: {e}")
             raise
 
+    def get_mark_price(self, symbol: str):
+        url = f"{BASE_URL}/fapi/v1/premiumIndex"
+
+        params = {"symbol": symbol}
+
+        response = httpx.get(url, params=params)
+        response.raise_for_status()
+
+        data = response.json()
+
+        return float(data["markPrice"])
+
     def get_symbol_filters(self,symbol):
         url = f"{BASE_URL}/fapi/v1/exchangeInfo"
         res = httpx.get(url).json()
@@ -53,3 +65,21 @@ class BinanceClient:
                 return s["filters"]
 
         raise ValueError("Symbol not found")
+
+    def get_symbols(self):
+        url = f"{BASE_URL}/fapi/v1/exchangeInfo"
+
+        response = httpx.get(url)
+        response.raise_for_status()
+
+        data = response.json()
+
+        symbols = []
+
+        for s in data["symbols"]:
+            if s["status"] == "TRADING":  # only active symbols
+                symbols.append(s["symbol"])
+
+        return symbols
+
+    
