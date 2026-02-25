@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_KEY = os.getenv("BINANCE_API_KEY")
-print("API KEY:", API_KEY[:6])
+
 API_SECRET = os.getenv("BINANCE_API_SECRET")
+
 BASE_URL = os.getenv("BASE_URL")
 
 class BinanceClient:
@@ -42,3 +43,13 @@ class BinanceClient:
         except Exception as e:
             logging.error(f"API error: {e}")
             raise
+
+    def get_symbol_filters(self,symbol):
+        url = f"{BASE_URL}/fapi/v1/exchangeInfo"
+        res = httpx.get(url).json()
+
+        for s in res["symbols"]:
+            if s["symbol"] == symbol:
+                return s["filters"]
+
+        raise ValueError("Symbol not found")

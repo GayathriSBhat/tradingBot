@@ -3,6 +3,7 @@ from typing import Optional
 
 from bot.logging_config import setup_logging
 from bot.validators import OrderInput
+from bot.client import BinanceClient
 from bot.orders import place_market, place_limit
 
 app = typer.Typer()
@@ -29,6 +30,16 @@ def place_order(
 
         print("\n=== Order Summary ===")
         print(order)
+
+        client = BinanceClient()
+        filters = client.get_symbol_filters(symbol)
+
+        errors = order.validate_order(symbol, price, quantity, filters)
+        if errors:
+            print("Order validation failed:")
+            for e in errors:
+                print("-", e)
+            return
 
         if order.order_type == "MARKET":
             res = place_market(symbol, side, quantity)
