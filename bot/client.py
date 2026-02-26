@@ -1,85 +1,92 @@
-import os
-import time
-import hmac
-import hashlib
-import httpx
-import logging
+import os, time, hmac, hashlib, httpx, urllib.parse, logging
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 load_dotenv()
 
 API_KEY = os.getenv("BINANCE_API_KEY")
-
 API_SECRET = os.getenv("BINANCE_API_SECRET")
-
-BASE_URL = os.getenv("BASE_URL")
+# Base URL (Mainnet: https://fapi.binance.com | Testnet: https://testnet.binancefuture.com)
+BASE_URL = os.getenv("BASE_URL", "https://fapi.binance.com")
 
 class BinanceClient:
+    def __init__(self):
+        self.headers = {"X-MBX-APIKEY": API_KEY} if API_KEY else {}
 
-    def _sign(self, params):
-        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-        signature = hmac.new(
-            API_SECRET.encode(),
-            query_string.encode(),
+    def _sign(self, query_string: str) -> str:
+        """Generates HMAC SHA256 signature using the API Secret."""
+        return hmac.new(
+            API_SECRET.encode('utf-8'), 
+            query_string.encode('utf-8'), 
             hashlib.sha256
         ).hexdigest()
-        return signature
 
-    def place_order(self, params):
-        params["timestamp"] = int(time.time() * 1000)
-        params["signature"] = self._sign(params)
-
-        headers = {"X-MBX-APIKEY": API_KEY}
-
-        url = f"{BASE_URL}/fapi/v1/order"
-
+    def _handle_request(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
+        """Centralized handler for all API requests with rate limit tracking."""
         try:
-            response = httpx.post(url, params=params, headers=headers)
-            logging.info(f"Request: {params}")
-            logging.info(f"Response: {response.text}")
-            response.raise_for_status()
-            return response.json()
-
+            with httpx.Client(timeout=10.0) as client:
+                response = client.request(method, url, **kwargs)
+                
+                # Monitor Rate Limits
+                weight = response.headers.get("X-MBX-USED-WEIGHT-1M")
+                if weight:
+                    logging.info(f"[Rate Limit] IP Weight: {weight}/2400")
+                
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                raise Exception(f"Rate Limit Hit! Retry after {e.response.headers.get('Retry-After')}s")
+            try:
+                error_data = e.response.json()
+                raise Exception(f"Exchange Error {error_data.get('code')}: {error_data.get('msg')}")
+            except:
+                raise Exception(f"HTTP Error {e.response.status_code}: {e.response.text}")
         except Exception as e:
-            logging.error(f"API error: {e}")
-            raise
+            raise Exception(f"Network Error: {str(e)}")
 
-    def get_mark_price(self, symbol: str):
-        url = f"{BASE_URL}/fapi/v1/premiumIndex"
+    def get_symbols(self) -> List[str]:
+        """Returns all symbols currently available for trading."""
+        data = self._handle_request("GET", f"{BASE_URL}/fapi/v1/exchangeInfo")
+        return [s["symbol"] for s in data.get("symbols", []) if s["status"] == "TRADING"]
 
-        params = {"symbol": symbol}
+    def get_mark_price(self, symbol: str) -> float:
+        """Fetches the current Mark Price for a specific symbol."""
+        data = self._handle_request("GET", f"{BASE_URL}/fapi/v1/premiumIndex", params={"symbol": symbol.upper()})
+        return float(data.get("markPrice", 0.0))
 
-        response = httpx.get(url, params=params)
-        response.raise_for_status()
-
-        data = response.json()
-
-        return float(data["markPrice"])
-
-    def get_symbol_filters(self,symbol):
-        url = f"{BASE_URL}/fapi/v1/exchangeInfo"
-        res = httpx.get(url).json()
-
-        for s in res["symbols"]:
-            if s["symbol"] == symbol:
-                return s["filters"]
-
-        raise ValueError("Symbol not found")
-
-    def get_symbols(self):
-        url = f"{BASE_URL}/fapi/v1/exchangeInfo"
-
-        response = httpx.get(url)
-        response.raise_for_status()
-
-        data = response.json()
-
-        symbols = []
-
+    def get_symbol_filters(self, symbol: str) -> List[Dict]:
+        """Fetches trading rules/constraints for the symbol."""
+        data = self._handle_request("GET", f"{BASE_URL}/fapi/v1/exchangeInfo")
         for s in data["symbols"]:
-            if s["status"] == "TRADING":  # only active symbols
-                symbols.append(s["symbol"])
+            if s["symbol"] == symbol.upper():
+                return s["filters"]
+        raise ValueError(f"Symbol {symbol} not found.")
 
-        return symbols
+    def get_balance_and_leverage(self, symbol: str):
+        """Fetches account balance and leverage for margin validation."""
+        ts = int(time.time() * 1000)
+        query = f"timestamp={ts}&recvWindow=5000"
+        signature = self._sign(query)
+        url = f"{BASE_URL}/fapi/v2/account?{query}&signature={signature}"
+        
+        data = self._handle_request("GET", url, headers=self.headers)
+        balance = next((float(a["availableBalance"]) for a in data["assets"] if a["asset"] == "USDT"), 0.0)
+        leverage = next((int(p["leverage"]) for p in data["positions"] if p["symbol"] == symbol.upper()), 20)
+        return balance, leverage
 
-    
+    def place_order(self, params: Dict):
+        """Signs and executes a new order on Binance."""
+        params["timestamp"] = int(time.time() * 1000)
+        params["recvWindow"] = 5000
+        
+        # Ensure booleans are 'true'/'false' strings
+        for k, v in params.items():
+            if isinstance(v, bool):
+                params[k] = str(v).lower()
+        
+        query_string = urllib.parse.urlencode(params)
+        signature = self._sign(query_string)
+        url = f"{BASE_URL}/fapi/v1/order?{query_string}&signature={signature}"
+        
+        return self._handle_request("POST", url, headers=self.headers)
