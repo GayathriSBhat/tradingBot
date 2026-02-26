@@ -41,7 +41,7 @@ def interactive():
     mark_price = client.get_mark_price(symbol)
     filters = client.get_symbol_filters(symbol)
     summary_data = get_constraints_summary(filters)
-    
+
     console.print(f"\n[green]Mark Price: {mark_price}[/green]")
     if not typer.confirm("Open order inputs?"): return
 
@@ -49,7 +49,7 @@ def interactive():
     side = typer.prompt("Side (BUY/SELL)").upper()
     reduce_only = typer.confirm("Reduce Only?") if side == "SELL" else False
     order_type = typer.prompt("Type (MARKET/LIMIT)").upper()
-    
+
     price = None
     if order_type == "LIMIT":
         price = float(typer.prompt("Price"))
@@ -75,6 +75,7 @@ def interactive():
             return
 
         # 5. API Execution
+
         payload = {
             "symbol": symbol,
             "side": side,
@@ -82,7 +83,7 @@ def interactive():
             "quantity": order.quantity,
             "reduceOnly": reduce_only
         }
-        
+
         if order.order_type == "LIMIT":
             payload["price"] = order.price
             payload["timeInForce"] = "GTC" # Mandatory for Limit orders

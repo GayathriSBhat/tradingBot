@@ -16,10 +16,40 @@ This project is a command-line application for placing and validating orders on 
 
 ---
 
+## Binance Futures Order Constraints
 
-## How to run?
+### 1. Minimum Notional Requirement
 
-Run the CLI to place an order:
+Orders must meet a minimum value threshold.
+
+**Rule:**
+```
+price × quantity ≥ minimum notional (typically around 100 USDT)
+```
+
+**Why it exists:**
+- Prevents very small "dust" trades
+- Reduces unnecessary load on the exchange
+
+### 2. Price Band Restrictions
+
+Limit order prices must remain within an acceptable range relative to the current market (mark price).
+
+**Rules:**
+- SELL limit orders cannot be far below market price.
+- BUY limit orders cannot be far above market price.
+
+**Why it exists:**
+- Prevents manipulation
+- Avoids accidental executions
+
+### 3. Quantity Precision
+
+Each trading pair defines a step size for quantity.
+
+---
+
+## How to Run
 
 ### Market Orders
 
@@ -48,74 +78,41 @@ python cli.py \
     --symbol BTCUSDT \
     --side BUY \
     --order-type LIMIT \
+    --price 25000 \
     --quantity 0.004 \
-    --price 30000 \
     --debug
 ```
-
-```bash
-python cli.py \
-    --symbol BTCUSDT \
-    --side SELL \
-    --order-type LIMIT \
-    --quantity 0.004 \
-    --price 30000 \
-    --debug
-```
-
-### Arguments
-
-- `--symbol`: Trading pair (e.g., `BTCUSDT`).
-- `--side`: Order side (`BUY` or `SELL`).
-- `--order-type`: Order type (`MARKET` or `LIMIT`).
-- `--quantity`: Order quantity.
-- `--price`: Price for `LIMIT` orders (optional for `MARKET` orders).
-- `--debug`: Enable debug logging.
 
 ---
 
 ## Testing
 
-Run the test suite using `pytest`:
+Unit tests are included to validate the functionality of the bot. To run the tests, use:
 
 ```bash
-pytest
+pytest tests/
 ```
 
-Test categories:
+---
 
-- **API Tests**: Validate API interactions.
-- **Client Tests**: Test client behavior with mock objects.
-- **Parsing Tests**: Ensure input validation works as expected.
-- **Response Tests**: Verify response handling and logging.
+## Directory Structure
+
+- `bot/`: Core logic for order placement, validation, and logging.
+- `logs/`: Stores log files for debugging and tracking.
+- `tests/`: Contains unit tests for the bot.
 
 ---
 
+## Requirements
 
----
+Install the required dependencies using:
 
-## Best Practices
-
-- **Validate Inputs**: Ensure all inputs meet Binance trading rules.
-- **Handle Errors**: Gracefully handle API errors and invalid inputs.
-- **Secure Secrets**: Keep API keys and secrets in the `.env` file.
+```bash
+pip install -r requirements.txt
+```
 
 ---
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-## Acknowledgments
-
-- [Binance API Documentation](https://binance-docs.github.io/apidocs/futures/en/)
-- [Typer](https://typer.tiangolo.com/) for building the CLI.
-- [Pydantic](https://pydantic-docs.helpmanual.io/) for data validation.
-
----
-
-## Contributing
-
-Contributions are welcome! Feel free to open issues or submit pull requests.
+This project is licensed under the MIT License. See the LICENSE file for details.
