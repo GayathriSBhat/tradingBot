@@ -24,8 +24,37 @@ def get_constraints_summary(filters):
     console.print(f"Tick: {summary['tick_size']} | Min Notional: {summary['min_notional']}")
     return summary
 
+def get_testnet_dashboard_url(symbol: str):
+    return f"https://testnet.binancefuture.com/en/futures/{symbol}"
+
 def interactive():
     client = BinanceClient()
+
+    # Show available balance, assets
+    def show_balance():
+        account_info = client.get_account_info()
+
+        console.print("\n[bold cyan]ACCOUNT SUMMARY[/bold cyan]")
+        console.print("="*60)
+
+        console.print(f"Available Balance: {account_info['availableBalance']} USDT")
+        console.print(f"Total Wallet Balance: {account_info['totalWalletBalance']} USDT")
+        console.print(f"Unrealized PnL: {account_info['totalUnrealizedProfit']} USDT")
+
+        console.print("\n[bold]Assets:[/bold]")
+
+        for asset in account_info.get("assets", []):
+            wallet = float(asset.get("walletBalance", 0))
+            pnl = float(asset.get("unrealizedProfit", 0))
+            
+            if wallet != 0 or pnl != 0:
+                console.print(
+                    f"{asset['asset']} | Wallet: {wallet} | Unrealized PnL: {pnl}"
+                )
+
+        console.print("="*60)
+    
+    show_balance()
 
     # 1. Symbol Selection
     symbols = client.get_symbols()
@@ -90,9 +119,15 @@ def interactive():
 
         res = client.place_order(payload)
         console.print(f"\n[bold green]SUCCESS! Order ID: {res['orderId']}[/bold green]")
+        dashboard_url = get_testnet_dashboard_url(symbol)
+        console.print(f"[cyan]Verify on Binance Testnet Dashboard:[/cyan] {dashboard_url}")
 
     except Exception as e:
         console.print(f"\n[bold red]TRADE FAILED: {e}[/bold red]")
+        dashboard_url = get_testnet_dashboard_url(symbol)
+        console.print(f"[yellow]Check on Testnet Dashboard:[/yellow] {dashboard_url}")
+
+    show_balance()
 
 if __name__ == "__main__":
     interactive()

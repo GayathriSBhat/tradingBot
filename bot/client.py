@@ -14,6 +14,7 @@ logger = logging.getLogger("tradebot")
 
 class BinanceClient:
     def __init__(self):
+        self.base_url = BASE_URL
         self.headers = {"X-MBX-APIKEY": API_KEY} if API_KEY else {}
 
     def _sign(self, query_string: str) -> str:
@@ -131,3 +132,12 @@ class BinanceClient:
         url = f"{BASE_URL}/fapi/v1/order?{query_string}&signature={signature}"
         
         return self._handle_request("POST", url, headers=self.headers)
+
+    def get_account_info(self):
+        ts = int(time.time() * 1000)
+        query = f"timestamp={ts}&recvWindow=5000"
+        signature = self._sign(query)
+
+        url = f"{self.base_url}/fapi/v2/account?{query}&signature={signature}"
+
+        return self._handle_request("GET", url, headers=self.headers)
