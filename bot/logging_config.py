@@ -1,201 +1,76 @@
-import logging
 from pathlib import Path
-from logging.handlers import RotatingFileHandler
-from rich.console import Console
-from rich.table import Table
 from datetime import datetime
-import csv
-import os
 
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 
-def setup_logging(debug: bool = False, *, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5):
-    """Configure logging with a Rich table console handler and a rotating file handler.
-
-    - `debug`: sets logging level to DEBUG when True, INFO otherwise.
-    - `max_bytes` / `backup_count`: configure rotation for the file handler.
-    """
-    level = logging.DEBUG if debug else logging.INFO
-
-    root = logging.getLogger()
-    # Clear existing handlers to avoid duplicates when re-initializing
-    if root.handlers:
-        for h in list(root.handlers):
-            root.removeHandler(h)
-
-    # File handler with rotation
-    file_handler = RotatingFileHandler(LOG_DIR / "trading_bot.log", maxBytes=max_bytes, backupCount=backup_count)
-    file_handler.setLevel(level)
-    file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    file_handler.setFormatter(file_formatter)
-
-    # Rich table console handler for pretty output
-    rich_table_handler = RichTableHandler()
-    rich_table_handler.setLevel(level)
-    rich_table_handler.setFormatter(logging.Formatter("%(message)s"))
-
-    root.setLevel(level)
-    root.addHandler(file_handler)
-    root.addHandler(rich_table_handler)
-
-    # Filter to allow only project/app logs in console/file (reduces noisy third-party logs)
-    class ProjectFilter(logging.Filter):
-        def __init__(self, project_id: str = "testTradeBot"):
-            super().__init__()
-            self.project_id = project_id
-
-        def filter(self, record: logging.LogRecord) -> bool:
-            try:
-                if record.name.startswith("tradebot"):
-                    return True
-                pathname = getattr(record, "pathname", "") or ""
-                return self.project_id in pathname
-            except Exception:
-                return False
-
-    project_filter = ProjectFilter()
-    file_handler.addFilter(project_filter)
-    rich_table_handler.addFilter(project_filter)
-
-    # Silence noisy HTTP libs further
-    logging.getLogger("httpx").setLevel(logging.ERROR)
-    logging.getLogger("httpcore").setLevel(logging.ERROR)
-    logging.getLogger("urllib3").setLevel(logging.ERROR)
+ORDER_LOG = LOG_DIR / "orders.log"
+DEBUG_LOG = LOG_DIR / "debug.log"
 
 
-def attach_order_file_logger(level: int = logging.INFO, *, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5):
-    """Attach a CSV rotating file handler for order-related logging.
+# --- Order Journal (1 line per order) ---
+def log_order(symbol, side, order_type, quantity, price=None, status="SUCCESS", reason=None, balance=None):
 
-    Returns the handler so the caller can remove it later with `detach_order_file_logger`.
-    """
-    root = logging.getLogger()
-    csv_file = LOG_DIR / "trading_bot.log"
-    handler = CSVRotatingFileHandler(str(csv_file), maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
-    handler.setLevel(level)
-    # Only log records belonging to the project or tradebot logger
-    class _Filter(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:
-            try:
-                if record.name.startswith("tradebot"):
-                    return True
-                pathname = getattr(record, "pathname", "") or ""
-                return "testTradeBot" in pathname
-            except Exception:
-                return False
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-    handler.addFilter(_Filter())
-    root.addHandler(handler)
-    return handler
+    line = f"{timestamp} | {symbol} | {side} | {order_type} | qty={quantity}"
+
+    if order_type == "LIMIT":
+        line += f" | price={price}"
+
+    line += f" | {status}"
+
+    if balance is not None:
+        line += f" | bal={balance}"
+
+    if status == "FAIL" and reason:
+        line += f" | {reason.upper()}"
+
+    with open(ORDER_LOG, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
 
 
-def detach_order_file_logger(handler: logging.Handler):
-    root = logging.getLogger()
-    try:
-        root.removeHandler(handler)
-        try:
-            handler.close()
-        except Exception:
-            pass
-    except Exception:
-        pass
+# --- Debug Diary (only when debug=True) ---
+def log_debug(message, debug=False):
+    if not debug:
+        return
 
-    # Reduce noise from third-party HTTP libraries
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    # Ensure our app logger inherits configured handlers
-    # logging.getLogger("tradebot").setLevel(level)
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open(DEBUG_LOG, "a", encoding="utf-8") as f:
+        f.write(f"{timestamp} | {message}\n")
 
 
+# --- Binance Error Interpreter ---
+def interpret_binance_error(err, filters=None):
 
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
+    code = err.get("code")
+    msg = err.get("msg", "")
 
+    if code == -2019:
+        return "BALANCE", "Insufficient margin"
 
-class RichTableHandler(logging.Handler):
-    """Logging handler that prints each record as a single-row Rich table.
+    elif code == -1013:
+        if "notional" in msg.lower():
+            min_notional = next(
+                (
+                    f.get("minNotional") or f.get("notional")
+                    for f in (filters or [])
+                    if f["filterType"] in ["NOTIONAL", "MIN_NOTIONAL"]
+                ),
+                "unknown"
+            )
+            return "NOTIONAL", f"Notional too low (min {min_notional} USDT)"
 
-    Columns: Timestamp | Level | Message
-    """
-    def __init__(self, level=logging.NOTSET):
-        super().__init__(level)
-        self.console = Console()
+        if "price" in msg.lower():
+            return "TICK", "Invalid price tick"
 
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            ts = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")
-            level = record.levelname
-            # Use the raw message for table to avoid duplicating timestamp/level
-            message = record.getMessage()
+        return "INVALID", "Order rejected by filter"
 
-            table = Table(show_header=True, header_style="bold cyan")
-            table.add_column("Timestamp", style="dim", no_wrap=True)
-            table.add_column("Level", style="magenta")
-            table.add_column("Message", overflow="fold")
-            table.add_row(ts, level, message)
+    elif code == -1111:
+        return "QTY", "Invalid quantity precision"
 
-            self.console.print(table)
-        except Exception:
-            self.handleError(record)
+    elif code == -1100:
+        return "INVALID", "Invalid input format"
 
-
-class CSVRotatingFileHandler(RotatingFileHandler):
-    """Rotating file handler that writes CSV rows: Timestamp, Level, Message.
-
-    Uses csv.writer to safely quote messages.
-    """
-    def __init__(self, filename, maxBytes=0, backupCount=0, encoding=None):
-        super().__init__(filename, maxBytes=maxBytes, backupCount=backupCount, encoding=encoding)
-        # If file is new or empty, write header
-        try:
-            if not os.path.exists(self.baseFilename) or os.path.getsize(self.baseFilename) == 0:
-                with open(self.baseFilename, "a", newline='', encoding=encoding or 'utf-8') as fh:
-                    writer = csv.writer(fh)
-                    writer.writerow(["Timestamp", "Level", "Message"])
-        except Exception:
-            pass
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            ts = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")
-            level = record.levelname
-            message = record.getMessage()
-
-            self.acquire()
-            try:
-                writer = csv.writer(self.stream)
-                writer.writerow([ts, level, message])
-                self.stream.flush()
-            finally:
-                self.release()
-        except Exception:
-            self.handleError(record)
-
-
-def setup_logging(debug: bool = False, *, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5):
-    """Configure logging with a Rich table console handler and a rotating CSV file handler.
-
-    - `debug`: sets logging level to DEBUG when True, INFO otherwise.
-    - `max_bytes` / `backup_count`: configure rotation for the file handler.
-    """
-    level = logging.DEBUG if debug else logging.INFO
-
-    root = logging.getLogger()
-    # Clear existing handlers to avoid duplicates when re-initializing
-    if root.handlers:
-        for h in list(root.handlers):
-            root.removeHandler(h)
-
-    # CSV file handler with rotation
-    csv_file = LOG_DIR / "trading_bot.log"
-    file_handler = CSVRotatingFileHandler(str(csv_file), maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
-    file_handler.setLevel(level)
-
-    # Rich table console handler for pretty output
-    rich_table_handler = RichTableHandler()
-    rich_table_handler.setLevel(level)
-
-    root.setLevel(level)
-    root.addHandler(file_handler)
-    root.addHandler(rich_table_handler)
+    return "REJECT", "Exchange rejected order"

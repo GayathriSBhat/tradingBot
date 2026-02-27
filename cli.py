@@ -4,9 +4,7 @@ from bot.validators import OrderInput
 from bot.client import BinanceClient
 from rich.console import Console
 from rich.table import Table
-from bot.logging_config import setup_logging
-from bot.logging_config import attach_order_file_logger, detach_order_file_logger
-
+from bot.logging_config import (log_order, log_debug, interpret_binance_error)
 
 app = typer.Typer()
 console = Console()
@@ -31,9 +29,21 @@ def get_constraints_summary(filters):
 def get_testnet_dashboard_url(symbol: str):
     return f"https://testnet.binancefuture.com/en/futures/{symbol}"
 
-def interactive():
-    setup_logging(debug=True)
-    logging.getLogger().handlers = logging.getLogger().handlers[:1]
+def debug_print(console, message, debug):
+    if not debug:
+        return
+    from rich.table import Table
+
+    table = Table(show_header=False)
+    table.add_column("Type", style="cyan", width=12)
+    table.add_column("Details", style="white")
+
+    table.add_row("DEBUG", message)
+    console.print(table)
+
+    log_debug(message, debug)
+
+def interactive(debug: bool = False):
     client = BinanceClient()
 
     # Show available balance, assets
@@ -101,17 +111,22 @@ def interactive():
             break
 
     # 4. Local Validation
+    debug_msg = None
+    reason = None
     try:
         order = OrderInput(symbol=symbol, side=side, order_type=order_type, quantity=quantity, price=price)
         order.normalize_quantities(filters)
         
         # Margin Check
-        balance, leverage = client.get_balance_and_leverage(symbol)
+        balance, leverage = client.get_balance_and_leverage(symbol) 
         check_price = order.price if order.price else mark_price
-        cost = (order.quantity * check_price) / leverage
-        
-        if cost > balance:
-            console.print(f"\n[red]INSUFFICIENT MARGIN: Need {cost:.2f} USDT, Have {balance:.2f} USDT[/red]")
+        notional = order.quantity * check_price
+        required_margin = notional / leverage
+
+        if not reduce_only and required_margin > balance:
+            console.print(
+                f"\n[red]INSUFFICIENT MARGIN: Need {required_margin:.2f} USDT, Have {balance:.2f} USDT[/red]"
+            )
             return
 
         errors = order.validate_against_filters(filters, mark_price)
@@ -133,29 +148,56 @@ def interactive():
             payload["price"] = order.price
             payload["timeInForce"] = "GTC" # Mandatory for Limit orders
 
-        order_log_handler = attach_order_file_logger()
         res = client.place_order(payload)
+        
+        account_info = client.get_account_info()
+        balance = account_info['availableBalance']
+
         console.print(f"\n[bold green]SUCCESS! Order ID: {res['orderId']}[/bold green]")
-        detach_order_file_logger(order_log_handler)
+        log_order(
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            quantity=order.quantity,
+            price=order.price,
+            status="SUCCESS"
+        )
+         
         dashboard_url = get_testnet_dashboard_url(symbol)
         console.print(f"[cyan]Verify on Binance Testnet Dashboard:[/cyan] {dashboard_url}")
 
     except Exception as e:
+        reason = "REJECT"
+        debug_msg = "Unknown error"
+
         if isinstance(e.args[0], dict):
-            err = e.args[0]
+            reason, debug_msg = interpret_binance_error(e.args[0], filters)
 
-            if err.get("status") == 400:
-                console.print("\n[bold red]ORDER FAILED:[/bold red] Invalid price or quantity entered")
-            else:
-                console.print("\n[bold red]ORDER FAILED:[/bold red] Could not place order")
+        console.print(f"\n[bold red]ORDER FAILED: {reason}[/bold red]")
 
-        else:
-            console.print("\n[bold red]ORDER FAILED:[/bold red] Unexpected error")
-            detach_order_file_logger(order_log_handler)
-        dashboard_url = get_testnet_dashboard_url(symbol)
-        console.print(f"[yellow]Check on Testnet Dashboard:[/yellow] {dashboard_url}")
+        try:
+            account_info = client.get_account_info()
+            balance = account_info['availableBalance']
+        except:
+            balance = "unknown"
+
+        log_order(
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            quantity=quantity,
+            price=price,
+            status="FAIL",
+            reason=reason,
+            balance=balance
+        )
+
+        debug_print(console, debug_msg, debug)
+
+    dashboard_url = get_testnet_dashboard_url(symbol)
+    console.print(f"[yellow]Check on Testnet Dashboard:[/yellow] {dashboard_url}")
 
     show_balance()
 
 if __name__ == "__main__":
-    interactive()
+    interactive(debug=False)
