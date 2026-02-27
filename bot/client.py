@@ -56,14 +56,27 @@ class BinanceClient:
                 return response.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
-                raise Exception(f"Rate Limit Hit! Retry after {e.response.headers.get('Retry-After')}s")
+                raise Exception({
+                    "type": "rate_limit",
+                    "status": 429
+                })
+
             try:
                 error_data = e.response.json()
-                # log exchange error details at DEBUG
                 logger.debug("Exchange error response: %s", error_data)
-                raise Exception(f"Exchange Error {error_data.get('code')}: {error_data.get('msg')}")
+
+                raise Exception({
+                    "type": "exchange",
+                    "status": e.response.status_code,
+                    "code": error_data.get("code"),
+                    "msg": error_data.get("msg")
+                })
+
             except:
-                raise Exception(f"HTTP Error {e.response.status_code}: {e.response.text}")
+                raise Exception({
+                    "type": "http",
+                    "status": e.response.status_code
+                })
         except Exception as e:
             raise Exception(f"Network Error: {str(e)}")
 

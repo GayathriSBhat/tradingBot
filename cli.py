@@ -1,8 +1,12 @@
 import typer
+import logging
 from bot.validators import OrderInput
 from bot.client import BinanceClient
 from rich.console import Console
 from rich.table import Table
+from bot.logging_config import setup_logging
+from bot.logging_config import attach_order_file_logger, detach_order_file_logger
+
 
 app = typer.Typer()
 console = Console()
@@ -28,6 +32,8 @@ def get_testnet_dashboard_url(symbol: str):
     return f"https://testnet.binancefuture.com/en/futures/{symbol}"
 
 def interactive():
+    setup_logging(debug=True)
+    logging.getLogger().handlers = logging.getLogger().handlers[:1]
     client = BinanceClient()
 
     # Show available balance, assets
@@ -127,13 +133,25 @@ def interactive():
             payload["price"] = order.price
             payload["timeInForce"] = "GTC" # Mandatory for Limit orders
 
+        order_log_handler = attach_order_file_logger()
         res = client.place_order(payload)
         console.print(f"\n[bold green]SUCCESS! Order ID: {res['orderId']}[/bold green]")
+        detach_order_file_logger(order_log_handler)
         dashboard_url = get_testnet_dashboard_url(symbol)
         console.print(f"[cyan]Verify on Binance Testnet Dashboard:[/cyan] {dashboard_url}")
 
     except Exception as e:
-        console.print(f"\n[bold red]TRADE FAILED: {e}[/bold red]")
+        if isinstance(e.args[0], dict):
+            err = e.args[0]
+
+            if err.get("status") == 400:
+                console.print("\n[bold red]ORDER FAILED:[/bold red] Invalid price or quantity entered")
+            else:
+                console.print("\n[bold red]ORDER FAILED:[/bold red] Could not place order")
+
+        else:
+            console.print("\n[bold red]ORDER FAILED:[/bold red] Unexpected error")
+            detach_order_file_logger(order_log_handler)
         dashboard_url = get_testnet_dashboard_url(symbol)
         console.print(f"[yellow]Check on Testnet Dashboard:[/yellow] {dashboard_url}")
 

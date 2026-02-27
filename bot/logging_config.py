@@ -1,7 +1,6 @@
 import logging
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
-
 from rich.console import Console
 from rich.table import Table
 from datetime import datetime
