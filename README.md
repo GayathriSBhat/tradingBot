@@ -19,7 +19,7 @@ Simple CLI app to place and validate orders on Binance Futures Testnet.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/tradingBot.git
+git clone https://github.com/GayathriSBhat/tradingBot.git
 cd tradingBot
 ```
 
@@ -31,7 +31,8 @@ BASE_URL=https://testnet.binancefuture.com
 ```
 
 ### 3. Build Docker Image (One-Time)
-```docker build -t tradebot .
+```
+docker build -t tradebot .
 ```
 
 ### 4. Create Container & Load Env Variables (One-Time Setup)
@@ -54,11 +55,13 @@ docker start -ai tradebot
 ## How to Run (Without Docker)
 
 ### 1. Install requirements
-``` pip install -r requirements.txt
+``` 
+pip install -r requirements.txt
 ```
 
 ### 2. It's an interactive CLI App, so you don't need to worry about flags, just keep passing the values
-```python cli.py
+```
+python cli.py
 ```
 
 ---
@@ -66,23 +69,23 @@ docker start -ai tradebot
 ## Example Usage
 
 ## Market Order
-Symbol: BTCUSDT
-Side: BUY
-Order Type: MARKET
-Quantity: 0.003
+Symbol: BTCUSDT <br>
+Side: BUY <br>
+Order Type: MARKET <br>
+Quantity: 0.003 <br>
 
 ## Limit Order
-Symbol: BTCUSDT
-Side: SELL
-Order Type: LIMIT
-Quantity: 0.003
-Price: 67000
+Symbol: BTCUSDT <br>
+Side: SELL <br>
+Order Type: LIMIT <br>
+Quantity: 0.003 <br>
+Price: 67000 <br>
 
 ---
 
 ## Testing
 
-```bash
+```
 pytest tests/
 ```
 ---
