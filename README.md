@@ -2,116 +2,96 @@
 
 ## Overview
 
-This project is a command-line application for placing and validating orders on Binance Futures. It includes features for market and limit orders, input validation, and logging. The bot is built using Python and leverages the Binance API for order placement.
+Simple CLI app to place and validate orders on Binance Futures Testnet.
 
 ---
 
 ## Features
 
-- **Order Placement**: Supports `MARKET` and `LIMIT` orders.
-- **Validation**: Validates orders against Binance trading rules (e.g., minimum notional, price tick size, lot size).
-- **Logging**: Logs all requests and responses to a file and console.
-- **Error Handling**: Handles API errors, invalid inputs, and other exceptions gracefully.
-- **Mock Testing**: Includes unit tests with mock objects for API and client behavior.
+- Supports `MARKET` and `LIMIT` orders  
+- Validates orders against Binance trading rules  
+- Logs requests and responses to console and file  
 
 ---
 
-## Binance Futures Order Constraints
+## How to Run (Docker version)
 
-### 1. Minimum Notional Requirement
+### 1. Clone the repository
 
-Orders must meet a minimum value threshold.
-
-**Rule:**
-```
-price × quantity ≥ minimum notional (typically around 100 USDT)
+```bash
+git clone https://github.com/<your-username>/tradingBot.git
+cd tradingBot
 ```
 
-**Why it exists:**
-- Prevents very small "dust" trades
-- Reduces unnecessary load on the exchange
+### 2.  Create a .env file in the project root and add the following credentials:
+```
+BINANCE_API_KEY=your_api_key
+BINANCE_SECRET_KEY=your_secret_key
+BASE_URL=https://testnet.binancefuture.com
+```
 
-### 2. Price Band Restrictions
+### 3. Build Docker Image (One-Time)
+```docker build -t tradebot .
+```
 
-Limit order prices must remain within an acceptable range relative to the current market (mark price).
+### 4. Create Container & Load Env Variables (One-Time Setup)
+```
+docker run -it --env-file .env --name tradebot tradebot
+```
 
-**Rules:**
-- SELL limit orders cannot be far below market price.
-- BUY limit orders cannot be far above market price.
+### 5. Once the CLI starts, you can stop it anytime using:
+```
+docker stop tradebot
+```
 
-**Why it exists:**
-- Prevents manipulation
-- Avoids accidental executions
-
-### 3. Quantity Precision
-
-Each trading pair defines a step size for quantity.
+### 6. Running the Bot Later
+```
+docker start -ai tradebot
+```
 
 ---
 
-## How to Run
+## How to Run (Without Docker)
 
-### Market Orders
-
-```bash
-python cli.py \
-    --symbol BTCUSDT \
-    --side BUY \
-    --order-type MARKET \
-    --quantity 0.004 \
-    --debug
+### 1. Install requirements
+``` pip install -r requirements.txt
 ```
 
-```bash
-python cli.py \
-    --symbol BTCUSDT \
-    --side SELL \
-    --order-type MARKET \
-    --quantity 0.004 \
-    --debug
+### 2. It's an interactive CLI App, so you don't need to worry about flags, just keep passing the values
+```python cli.py
 ```
 
-### Limit Orders
+---
 
-```bash
-python cli.py \
-    --symbol BTCUSDT \
-    --side BUY \
-    --order-type LIMIT \
-    --price 25000 \
-    --quantity 0.004 \
-    --debug
-```
+## Example Usage
+
+## Market Order
+Symbol: BTCUSDT
+Side: BUY
+Order Type: MARKET
+Quantity: 0.003
+
+## Limit Order
+Symbol: BTCUSDT
+Side: SELL
+Order Type: LIMIT
+Quantity: 0.003
+Price: 67000
 
 ---
 
 ## Testing
 
-Unit tests are included to validate the functionality of the bot. To run the tests, use:
-
 ```bash
 pytest tests/
 ```
-
 ---
 
-## Directory Structure
+## Assumptions
 
-- `bot/`: Core logic for order placement, validation, and logging.
-- `logs/`: Stores log files for debugging and tracking.
-- `tests/`: Contains unit tests for the bot.
+Uses Binance Futures Testnet
 
----
-
-## Requirements
-
-Install the required dependencies using:
-
-```bash
-pip install -r requirements.txt
-```
-
----
+Requires API keys from https://testnet.binancefuture.com
 
 ## License
 

@@ -4,37 +4,11 @@ from logging.handlers import RotatingFileHandler
 from rich.console import Console
 from rich.table import Table
 from datetime import datetime
-
+import csv
+import os
 
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
-
-
-class RichTableHandler(logging.Handler):
-    """Logging handler that prints each record as a single-row Rich table.
-
-    Columns: Timestamp | Level | Message
-    """
-    def __init__(self, level=logging.NOTSET):
-        super().__init__(level)
-        self.console = Console()
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            ts = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")
-            level = record.levelname
-            message = self.format(record)
-
-            table = Table(show_header=True, header_style="bold cyan")
-            table.add_column("Timestamp", style="dim", no_wrap=True)
-            table.add_column("Level", style="magenta")
-            table.add_column("Message", overflow="fold")
-            table.add_row(ts, level, message)
-
-            self.console.print(table)
-        except Exception:
-            self.handleError(record)
-
 
 def setup_logging(debug: bool = False, *, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5):
     """Configure logging with a Rich table console handler and a rotating file handler.
@@ -131,16 +105,8 @@ def detach_order_file_logger(handler: logging.Handler):
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     # Ensure our app logger inherits configured handlers
-    logging.getLogger("tradebot").setLevel(level)
-import logging
-from pathlib import Path
-from logging.handlers import RotatingFileHandler
-from datetime import datetime
-import csv
-import os
+    # logging.getLogger("tradebot").setLevel(level)
 
-from rich.console import Console
-from rich.table import Table
 
 
 LOG_DIR = Path("logs")
