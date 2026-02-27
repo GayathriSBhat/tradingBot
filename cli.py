@@ -81,8 +81,18 @@ def interactive():
 
     price = None
     if order_type == "LIMIT":
-        price = float(typer.prompt("Price"))
-    quantity = float(typer.prompt("Quantity"))
+        while True:
+            price = float(typer.prompt("Price"))
+            if price <= 0:
+                console.print("[red]Please enter a positive value[/red]")
+            else:
+                break
+    while True:
+        quantity = float(typer.prompt("Quantity"))
+        if quantity <= 0:
+            console.print("[red]Please enter a positive value[/red]")
+        else:
+            break
 
     # 4. Local Validation
     try:
